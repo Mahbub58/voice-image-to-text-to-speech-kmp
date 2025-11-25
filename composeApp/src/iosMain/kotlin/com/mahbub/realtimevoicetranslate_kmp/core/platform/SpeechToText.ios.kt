@@ -33,59 +33,6 @@ import platform.AVFAudio.AVAudioSessionCategoryOptions
 import platform.AVFAudio.AVAudioSessionSetActiveOptions
 
 actual class SpeechToText {
-//    private val _transcriptState = MutableStateFlow(
-//        TranscriptState(
-//            listeningStatus = ListeningStatus.INACTIVE
-//        )
-//    )
-//    actual val transcriptState: MutableStateFlow<TranscriptState>
-//        get() = _transcriptState
-//
-//    actual fun startTranscribing() {
-//        _transcriptState.value = _transcriptState.value.copy(
-//            listeningStatus = ListeningStatus.LISTENING
-//        )
-//    }
-//
-//    actual fun stopTranscribing() {
-//        _transcriptState.value = _transcriptState.value.copy(
-//            listeningStatus = ListeningStatus.INACTIVE
-//        )
-//    }
-//
-//    actual fun requestPermission(onPermissionResult: (PermissionRequestStatus) -> Unit) {
-//        onPermissionResult(PermissionRequestStatus.ALLOWED)
-//    }
-//
-//    actual fun getSupportedLanguages(onLanguagesResult: (List<String>) -> Unit) {
-//        onLanguagesResult(listOf("en-US", "bn-BD"))
-//    }
-//
-//    actual fun setLanguage(languageCode: String) {
-//        _transcriptState.value = _transcriptState.value.copy(
-//            selectedLanguage = languageCode
-//        )
-//    }
-//
-//    actual fun copyText(text: String) {
-//    }
-//
-//    actual fun showNeedPermission() {
-//        _transcriptState.value = _transcriptState.value.copy(
-//            showPermissionNeedDialog = true
-//        )
-//    }
-//
-//    actual fun dismissPermissionDialog() {
-//        _transcriptState.value = _transcriptState.value.copy(
-//            showPermissionNeedDialog = false
-//        )
-//    }
-//
-//    actual fun openAppSettings() {
-//    }
-//}
-
     private var _transcriptState = MutableStateFlow(
         TranscriptState(
             listeningStatus = ListeningStatus.INACTIVE,

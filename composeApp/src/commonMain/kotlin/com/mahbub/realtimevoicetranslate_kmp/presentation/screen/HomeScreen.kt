@@ -39,6 +39,7 @@ import com.mahbub.realtimevoicetranslate_kmp.presentation.component.BottomBar
 import com.mahbub.realtimevoicetranslate_kmp.presentation.component.LanguageSelectionDialog
 import com.mahbub.realtimevoicetranslate_kmp.presentation.component.PermissionNeedDialog
 import com.mahbub.realtimevoicetranslate_kmp.presentation.component.VoiceAnimation
+import com.mahbub.realtimevoicetranslate_kmp.presentation.component.TopBar
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -50,7 +51,7 @@ interface PermissionDialogEvents {
 
 
 @Composable
-fun HomeScreen() {
+fun SpeechToTextScreen(onBack: () -> Unit) {
     val viewModel = koinViewModel<SpeechToTextViewModel>()
     val transcriptState = viewModel.transcriptState.collectAsState()
     val uiEvent = viewModel.uiEvent.collectAsState()
@@ -70,12 +71,13 @@ fun HomeScreen() {
         }
     }
 
-        HomeScreenContent(
+        SpeechToTextContent(
             snackbarHostState = snackbarHostState,
             transcriptState = transcriptState.value,
             onLanguageSelected = viewModel::onLanguageSelected,
             onClickMic = viewModel::onClickMic,
             onClickCopy = viewModel::onClickCopy,
+            onBack = onBack,
 
             permissionDialogEvents = object : PermissionDialogEvents {
                 override fun onDismissRequest() {
@@ -91,13 +93,14 @@ fun HomeScreen() {
 
 
 @Composable
-fun HomeScreenContent(
+fun SpeechToTextContent(
     snackbarHostState: SnackbarHostState,
     transcriptState: TranscriptState,
     permissionDialogEvents: PermissionDialogEvents,
     onLanguageSelected: (String) -> Unit,
     onClickMic: () -> Unit,
     onClickCopy: () -> Unit,
+    onBack: () -> Unit,
 ) {
     var showLanguageDialog by remember { mutableStateOf(false) }
 
@@ -131,6 +134,7 @@ fun HomeScreenContent(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = { TopBar(title = "Speech to Text", onBack = onBack) },
         bottomBar = {
             BottomBar(
                 onClickShowLanguages = {
