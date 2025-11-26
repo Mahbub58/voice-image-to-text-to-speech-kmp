@@ -1,8 +1,7 @@
-import ComposeApp
 import AVFoundation
 import Foundation
 
-class TTSManagerIOS: ComposeApp.TTSProvider {
+class TTSManagerIOS {
     static let shared = TTSManagerIOS()
 
     private let synthesizer = AVSpeechSynthesizer()
@@ -13,242 +12,244 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
     private var pausedPosition = 0
     private var resumeOffset = 0
 
-    // Callback blocks
-    private var onWordBoundaryCallback: ((KotlinInt, KotlinInt) -> Void)?
-    private var onStartCallback: (() -> Void)?
-    private var onCompleteCallback: (() -> Void)?
-
-    private func setupDelegate() {
-        delegateHandler = TTSSynthesizerDelegate(
-            onStart: { [weak self] in
-                print("🎤 TTS Started")
-                self?.onStartCallback?()
-            },
-            onWordBoundary: { [weak self] start, end in
-                print("📍 Word boundary: \(start)-\(end)")
-                self?.handleWordBoundary(start: start, end: end)
-            },
-            onFinish: { [weak self] in
-                print("✅ TTS Finished")
-                self?.handleFinish()
-            }
-        )
+    private init() {
+        delegateHandler = TTSSynthesizerDelegate()
         synthesizer.delegate = delegateHandler
+        
+        // Configure audio session
+        configureAudioSession()
+        
+        print("🎤 TTSManagerIOS initialized")
     }
-
-    func initialize(onInitialized: @escaping () -> Void) {
-        print("🚀 TTS Initialized")
-        setupDelegate()
-        onInitialized()
-    }
-
-    func speak(
-        text: String,
-        onWordBoundary: @escaping (KotlinInt, KotlinInt) -> Void,
-        onStart: @escaping () -> Void,
-        onComplete: @escaping () -> Void
-    ) {
-        print("🗣️ Speak called with text: '\(text.prefix(50))...'")
-        print("📊 Current state - isPaused: \(isPausedState), resumeOffset: \(resumeOffset)")
-
-        // Store callbacks
-        onWordBoundaryCallback = onWordBoundary
-        onStartCallback = onStart
-        onCompleteCallback = onComplete
-
-        // Check if originalText is empty to determine if this is first time or resume
-        let isFirstTimeSpeak = originalText.isEmpty
-
-        if isFirstTimeSpeak {
-            print("🆕 First time speaking - resetting state")
-            originalText = text
-            pausedPosition = 0
-            resumeOffset = 0
-        } else {
-            print("🔄 Resume speaking - keeping resumeOffset: \(resumeOffset)")
-            // This is a resume call - don't reset anything
+    
+    private func configureAudioSession() {
+        print("🔊 Configuring audio session...")
+        let session = AVAudioSession.sharedInstance()
+        
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try session.setActive(true)
+            print("✅ Audio session configured successfully")
+        } catch {
+            print("❌ Audio session configuration error: \(error)")
         }
-
-        // Set paused state to false after checking
+    }
+    
+    func initialize() {
+        print("🔄 TTS Manager initialize called")
+        verifyTTSChain()
+    }
+    
+    func speak(text: String) {
+        print("🗣️ Swift TTS speak() called with text: '\(text.prefix(50))...'")
+        
+        // Reset state for new speech
+        originalText = text
+        pausedPosition = 0
+        resumeOffset = 0
         isPausedState = false
-
+        
+        // Configure audio session
+        configureAudioSession()
+        
+        // Create utterance
         let utterance = AVSpeechUtterance(string: text)
-        utterance.rate = 0.5
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.volume = 1.0
+        utterance.pitchMultiplier = 1.0
+        
+        // Configure voice with better error handling
+        let preferred = Locale.preferredLanguages.first ?? "en-US"
+        let code = preferred.replacingOccurrences(of: "_", with: "-")
+        print("🎤 Setting voice for language: \(code)")
+        
+        // Try to find the best available voice
+        var selectedVoice: AVSpeechSynthesisVoice?
+        
+        // First try the exact language code
+        if let exactVoice = AVSpeechSynthesisVoice(language: code) {
+            selectedVoice = exactVoice
+            print("✅ Found exact voice: \(exactVoice.name) (\(exactVoice.language))")
+        }
+        // Then try the base language (e.g., "en" for "en-US")
+        else if let baseCode = code.split(separator: "-").first,
+                let baseVoice = AVSpeechSynthesisVoice(language: String(baseCode)) {
+            selectedVoice = baseVoice
+            print("✅ Found base voice: \(baseVoice.name) (\(baseVoice.language))")
+        }
+        // Finally fall back to English
+        else if let fallbackVoice = AVSpeechSynthesisVoice(language: "en-US") {
+            selectedVoice = fallbackVoice
+            print("✅ Using fallback voice: \(fallbackVoice.name) (\(fallbackVoice.language))")
+        }
+        else {
+            // Use system default voice
+            print("⚠️ No specific voice found, using system default")
+        }
+        
+        if let voice = selectedVoice {
+            utterance.voice = voice
+        }
+        
+        print("🗣️ Speaking text: '\(text.prefix(50))...'")
+        print("📊 Rate: \(utterance.rate), Volume: \(utterance.volume), Voice: \(utterance.voice?.name ?? "default")")
 
         synthesizer.speak(utterance)
     }
-
+    
     func stop() {
-        print("🛑 Stop called")
-        synthesizer.stopSpeaking(at: .immediate)
-        isPausedState = false
-        pausedPosition = 0
-        resumeOffset = 0
-        originalText = ""
-        onWordBoundaryCallback?(-1, -1)
-    }
-
-    func pause() {
-        print("⏸️ Pause called")
-        print("📍 Pausing at position: \(pausedPosition)")
-        synthesizer.stopSpeaking(at: .immediate)  // Changed from pauseSpeaking to stopSpeaking
-        isPausedState = true
-    }
-
-    func resume() {
-        print("▶️ Resume called")
-        print("📊 Resume state - isPaused: \(isPausedState), pausedPos: \(pausedPosition), originalText.count: \(originalText.count)")
-
-        if isPausedState && !originalText.isEmpty {
-            let remainingText = getRemainingText()
-            print("📝 Remaining text: '\(remainingText.prefix(50))...'")
-
-            if !remainingText.isEmpty {
-                let wordStartPos = findWordStart(text: originalText, position: pausedPosition)
-                resumeOffset = wordStartPos
-                print("📍 Resume offset set to: \(resumeOffset)")
-
-                if let wordBoundary = onWordBoundaryCallback,
-                   let start = onStartCallback,
-                   let complete = onCompleteCallback {
-
-                    // Set paused state to false BEFORE calling speak
-                    isPausedState = false
-                    print("🔄 Calling speak with remaining text, resumeOffset should stay: \(resumeOffset)")
-                    speak(text: remainingText, onWordBoundary: wordBoundary, onStart: start, onComplete: complete)
-                    print("📍 After speak call, resumeOffset is: \(resumeOffset)")
-                }
-            }
-        }
-    }
-
-    func isPlaying() -> Bool {
-        let playing = synthesizer.isSpeaking && !isPausedState
-        print("❓ isPlaying: \(playing) (speaking: \(synthesizer.isSpeaking), paused: \(isPausedState))")
-        return playing
-    }
-
-    func isPaused() -> Bool {
-        print("❓ isPaused: \(isPausedState)")
-        return isPausedState
-    }
-
-    func release() {
-        print("🗑️ Release called")
-        synthesizer.stopSpeaking(at: .immediate)
-        synthesizer.delegate = nil
-        delegateHandler = nil
-        isPausedState = false
-        pausedPosition = 0
-        resumeOffset = 0
-        originalText = ""
-    }
-
-    private func handleWordBoundary(start: Int, end: Int) {
-        if !isPausedState {
-            // Calculate position in original text (same logic as Android)
-            let actualStart = resumeOffset + start
-            let actualEnd = resumeOffset + end - 1  // Note: end-1 like Android
-
-            print("🎯 Handling word boundary: local(\(start)-\(end)) -> actual(\(actualStart)-\(actualEnd))")
-            print("📏 Original text length: \(originalText.count), resumeOffset: \(resumeOffset)")
-
-            guard actualStart >= 0 && actualStart < originalText.count else {
-                print("⚠️ Word boundary actualStart(\(actualStart)) out of bounds!")
-                return
-            }
-
-            // Find word boundaries in original text (same as Android)
-            let wordStart = findWordStart(text: originalText, position: actualStart)
-            let wordEnd = findWordEnd(text: originalText, position: min(actualEnd, originalText.count - 1))
-
-            // Update paused position for future resume (same as Android)
-            pausedPosition = wordStart
-
-            print("✨ Highlighting: \(wordStart)-\(wordEnd), updated pausedPosition: \(pausedPosition)")
-            print("📝 Highlighted text: '\(String(Array(originalText)[wordStart...wordEnd]))'")
-
-            onWordBoundaryCallback?(KotlinInt(integerLiteral: wordStart), KotlinInt(integerLiteral: wordEnd))
-        }
-    }
-
-    private func handleFinish() {
-        print("🏁 Speech finished - isPaused: \(isPausedState)")
-        if !isPausedState {
-            print("🏁 Speech finished normally")
-            onWordBoundaryCallback?(-1, -1)
-            onCompleteCallback?()
-            originalText = ""
-            pausedPosition = 0
-            resumeOffset = 0
+        print("⏹️ Swift TTS stop() called")
+        
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+            print("🛑 Stopped speaking immediately")
         } else {
-            print("⏸️ Speech finished due to pause - keeping state")
-            // Don't reset state when paused, keep everything for resume
+            print("⚠️ Not currently speaking")
+        }
+        
+        // Reset state
+        isPausedState = false
+        originalText = ""
+        pausedPosition = 0
+        resumeOffset = 0
+    }
+    
+    func pause() {
+        print("⏸️ Swift TTS pause() called")
+        
+        if synthesizer.isSpeaking {
+            let success = synthesizer.pauseSpeaking(at: .word)
+            if success {
+                isPausedState = true
+                print("✅ Paused speaking at word boundary")
+            } else {
+                print("❌ Failed to pause speaking")
+            }
+        } else {
+            print("⚠️ Not currently speaking")
         }
     }
-
-    private func getRemainingText() -> String {
-        if pausedPosition < originalText.count {
-            let wordStartPos = findWordStart(text: originalText, position: pausedPosition)
-            let startIndex = originalText.index(originalText.startIndex, offsetBy: wordStartPos)
-            let remaining = String(originalText[startIndex...])
-            print("📝 getRemainingText: pausedPos=\(pausedPosition), wordStart=\(wordStartPos), remaining='\(remaining.prefix(30))...'")
-            return remaining
+    
+    func resume() {
+        print("▶️ Swift TTS resume() called")
+        
+        if synthesizer.isPaused {
+            let success = synthesizer.continueSpeaking()
+            if success {
+                isPausedState = false
+                print("✅ Resumed speaking")
+            } else {
+                print("❌ Failed to resume speaking")
+            }
+        } else {
+            print("⚠️ Not currently paused")
         }
-        print("📝 getRemainingText: No remaining text")
-        return ""
     }
-
-    private func findWordStart(text: String, position: Int) -> Int {
-        let safePosition = max(0, min(position, text.count - 1))
-        var start = safePosition
-
-        let textArray = Array(text)
-        while start > 0 && !textArray[start - 1].isWhitespace {
-            start -= 1
+    
+    func checkTTSStatus() {
+        print("🔍 Checking TTS status...")
+        print("   isSpeaking: \(synthesizer.isSpeaking)")
+        print("   isPaused: \(synthesizer.isPaused)")
+        print("   delegate set: \(synthesizer.delegate != nil)")
+        
+        // Test utterance creation
+        let testUtterance = AVSpeechUtterance(string: "Status test")
+        testUtterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        testUtterance.volume = 0.1 // Low volume for test
+        
+        if let voice = AVSpeechSynthesisVoice(language: "en-US") {
+            testUtterance.voice = voice
+            print("   ✅ Test utterance created successfully")
+        } else {
+            print("   ❌ Failed to create voice for test utterance")
         }
-        return start
     }
-
-    private func findWordEnd(text: String, position: Int) -> Int {
-        let safePosition = max(0, min(position, text.count - 1))
-        var end = safePosition
-
-        let textArray = Array(text)
-        while end < textArray.count - 1 && !textArray[end + 1].isWhitespace {
-            end += 1
+    
+    func verifyTTSChain() {
+        print("🔗 Verifying complete TTS chain...")
+        
+        // Step 1: Check basic AVSpeechSynthesizer functionality
+        print("1️⃣ Testing basic AVSpeechSynthesizer...")
+        let testUtterance = AVSpeechUtterance(string: "Chain test")
+        testUtterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        testUtterance.volume = 0.5 // Lower volume for test
+        testUtterance.pitchMultiplier = 1.0
+        
+        if let voice = AVSpeechSynthesisVoice(language: "en-US") {
+            testUtterance.voice = voice
+            print("   ✅ Basic utterance creation successful")
+        } else {
+            print("   ❌ Failed to create voice")
+            return
         }
-        return end
+        
+        // Step 2: Test audio session
+        print("2️⃣ Testing audio session...")
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try session.setActive(true)
+            print("   ✅ Audio session configured")
+        } catch {
+            print("   ❌ Audio session error: \(error)")
+            return
+        }
+        
+        // Step 3: Test delegate setup
+        print("3️⃣ Testing delegate...")
+        if synthesizer.delegate != nil {
+            print("   ✅ Delegate is set")
+        } else {
+            print("   ❌ Delegate not set")
+            return
+        }
+        
+        // Step 4: Test actual speech with a very short utterance
+        print("4️⃣ Testing actual speech...")
+        let shortTest = AVSpeechUtterance(string: "Test")
+        shortTest.rate = AVSpeechUtteranceDefaultSpeechRate
+        shortTest.volume = 0.3 // Very low volume
+        shortTest.voice = testUtterance.voice
+        
+        print("   🎙️ Speaking short test...")
+        synthesizer.speak(shortTest)
+        
+        // Give it a moment to start
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.synthesizer.isSpeaking {
+                print("   ✅ TTS chain verified - speech is working!")
+                self.synthesizer.stopSpeaking(at: .immediate)
+            } else {
+                print("   ❌ TTS chain broken - speech not starting")
+            }
+        }
     }
 }
 
-private class TTSSynthesizerDelegate: NSObject, AVSpeechSynthesizerDelegate {
-    let onStart: () -> Void
-    let onWordBoundary: (Int, Int) -> Void
-    let onFinish: () -> Void
-
-    init(
-        onStart: @escaping () -> Void,
-        onWordBoundary: @escaping (Int, Int) -> Void,
-        onFinish: @escaping () -> Void
-    ) {
-        self.onStart = onStart
-        self.onWordBoundary = onWordBoundary
-        self.onFinish = onFinish
-        super.init()
-    }
-
+// MARK: - AVSpeechSynthesizerDelegate
+class TTSSynthesizerDelegate: NSObject, AVSpeechSynthesizerDelegate {
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
-        onStart()
+        print("🎤 TTS started: '\(utterance.speechString.prefix(30))...'")
     }
-
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
-        let start = characterRange.location
-        let end = characterRange.location + characterRange.length - 1
-        onWordBoundary(start, end)
-    }
-
+    
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        onFinish()
+        print("✅ TTS finished: '\(utterance.speechString.prefix(30))...'")
+    }
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didPause utterance: AVSpeechUtterance) {
+        print("⏸️ TTS paused: '\(utterance.speechString.prefix(30))...'")
+    }
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didContinue utterance: AVSpeechUtterance) {
+        print("▶️ TTS continued: '\(utterance.speechString.prefix(30))...'")
+    }
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        print("🛑 TTS cancelled: '\(utterance.speechString.prefix(30))...'")
+    }
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        let word = (utterance.speechString as NSString).substring(with: characterRange)
+        print("🔤 Will speak word: '\(word)' at range: \(characterRange)")
     }
 }

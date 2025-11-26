@@ -1,7 +1,7 @@
-TEAM_ID=
+TEAM_ID=.
 
-PRODUCT_NAME=RealTimeVoiceTranslate_KMP
-PRODUCT_BUNDLE_IDENTIFIER=com.mahbub.realtimevoicetranslate_kmp.RealTimeVoiceTranslate_KMP$(TEAM_ID)
+PRODUCT_NAME=RealTimeVoiceTranslateKMP
+PRODUCT_BUNDLE_IDENTIFIER=com.mahbub.realtimevoicetranslate.kmp$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
