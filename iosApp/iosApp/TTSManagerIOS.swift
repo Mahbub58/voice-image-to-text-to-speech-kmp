@@ -78,7 +78,7 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
         synthesizer.speak(utterance)
     }
 
-    func stop() {
+    func stop_() {
         print("🛑 Stop called")
         synthesizer.stopSpeaking(at: .immediate)
         isPausedState = false
@@ -88,14 +88,14 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
         onWordBoundaryCallback?(-1, -1)
     }
 
-    func pause() {
+    func pause_() {
         print("⏸️ Pause called")
         print("📍 Pausing at position: \(pausedPosition)")
         synthesizer.stopSpeaking(at: .immediate)  // Changed from pauseSpeaking to stopSpeaking
         isPausedState = true
     }
 
-    func resume() {
+    func resume_() {
         print("▶️ Resume called")
         print("📊 Resume state - isPaused: \(isPausedState), pausedPos: \(pausedPosition), originalText.count: \(originalText.count)")
 
@@ -133,7 +133,7 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
         return isPausedState
     }
 
-    func release() {
+    func release_() {
         print("🗑️ Release called")
         synthesizer.stopSpeaking(at: .immediate)
         synthesizer.delegate = nil
