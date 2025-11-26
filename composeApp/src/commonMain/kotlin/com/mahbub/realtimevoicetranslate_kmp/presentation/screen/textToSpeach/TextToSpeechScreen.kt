@@ -1,4 +1,4 @@
-package com.mahbub.realtimevoicetranslate_kmp.presentation.screen
+package com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textToSpeach
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
