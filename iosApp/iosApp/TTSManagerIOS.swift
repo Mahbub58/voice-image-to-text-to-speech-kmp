@@ -39,6 +39,7 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
     func initialize(onInitialized: @escaping () -> Void) {
         print("🚀 TTS Initialized")
         setupDelegate()
+        configureAudioSessionForPlayback()
         onInitialized()
     }
 
@@ -50,6 +51,9 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
     ) {
         print("🗣️ Speak called with text: '\(text.prefix(50))...'")
         print("📊 Current state - isPaused: \(isPausedState), resumeOffset: \(resumeOffset)")
+
+        // Configure audio session for playback before speaking
+        configureAudioSessionForPlayback()
 
         // Store callbacks
         onWordBoundaryCallback = onWordBoundary
@@ -81,6 +85,7 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
     func stop_() {
         print("🛑 Stop called")
         synthesizer.stopSpeaking(at: .immediate)
+        resetAudioSession()
         isPausedState = false
         pausedPosition = 0
         resumeOffset = 0
@@ -136,6 +141,7 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
     func release_() {
         print("🗑️ Release called")
         synthesizer.stopSpeaking(at: .immediate)
+        resetAudioSession()
         synthesizer.delegate = nil
         delegateHandler = nil
         isPausedState = false
@@ -184,6 +190,43 @@ class TTSManagerIOS: ComposeApp.TTSProvider {
         } else {
             print("⏸️ Speech finished due to pause - keeping state")
             // Don't reset state when paused, keep everything for resume
+        }
+    }
+
+    private func configureAudioSessionForPlayback() {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        do {
+            // Deactivate current session first to ensure clean state
+            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            print("🔇 Audio session deactivated for TTS setup")
+            
+            // Configure for playback with speaker output
+            try audioSession.setCategory(
+                .playback,
+                mode: .default,
+                options: [.defaultToSpeaker, .duckOthers]
+            )
+            print("🔊 Audio session configured for playback")
+            
+            // Activate the session
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+            print("🔊 Audio session activated for TTS")
+            
+        } catch {
+            print("❌ Failed to configure audio session for TTS: \(error)")
+        }
+    }
+
+    private func resetAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        do {
+            // Deactivate the session to allow other audio
+            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            print("🔇 Audio session deactivated after TTS stop")
+        } catch {
+            print("❌ Failed to reset audio session: \(error)")
         }
     }
 
