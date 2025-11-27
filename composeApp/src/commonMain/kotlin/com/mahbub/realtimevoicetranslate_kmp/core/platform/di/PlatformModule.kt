@@ -39,5 +39,5 @@ val sharedModule = module {
     
     // ViewModel bindings
     viewModel { SpeechToTextViewModel(get(), get(), get(), get(), get()) }
-    viewModel { TextToSpeechViewModel(get(), get(), get(), get(), get()) }
+    viewModel { TextToSpeechViewModel(get(), get(), get(), get(), get(), get()) }
 }

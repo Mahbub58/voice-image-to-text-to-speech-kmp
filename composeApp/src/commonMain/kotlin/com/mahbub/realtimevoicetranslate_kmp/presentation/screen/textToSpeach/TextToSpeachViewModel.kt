@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.mahbub.realtimevoicetranslate_kmp.core.platform.getTTSProvider
 import com.mahbub.realtimevoicetranslate_kmp.domain.TTSState
 import com.mahbub.realtimevoicetranslate_kmp.domain.model.Result
+import com.mahbub.realtimevoicetranslate_kmp.domain.repository.TextToSpeechRepository
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.InitializeTTSUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.PauseTTSUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ResumeTTSUseCase
@@ -14,13 +15,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.onEach
 
 class TextToSpeechViewModel(
     private val initializeTTSUseCase: InitializeTTSUseCase,
     private val speakTextUseCase: SpeakTextUseCase,
     private val pauseTTSUseCase: PauseTTSUseCase,
     private val resumeTTSUseCase: ResumeTTSUseCase,
-    private val stopTTSUseCase: StopTTSUseCase
+    private val stopTTSUseCase: StopTTSUseCase,
+    private val textToSpeechRepository: TextToSpeechRepository
 ) : ViewModel() {
     // Track highlighted word range while speaking
     private val _currentWordRange = MutableStateFlow(-1..-1)
@@ -51,6 +54,28 @@ class TextToSpeechViewModel(
 
     init {
         initializeTTS()
+        observeTTSState()
+    }
+
+    private fun observeTTSState() {
+        viewModelScope.launch {
+            textToSpeechRepository.getTTSState().onEach { ttsText ->
+                _state.update {
+                    it.copy(
+                        text = ttsText.text,
+                        highlightStart = ttsText.highlightStart,
+                        highlightEnd = ttsText.highlightEnd,
+                        isPlaying = ttsText.isPlaying,
+                        isPaused = ttsText.isPaused
+                    )
+                }
+                _ttsState.value = when {
+                    ttsText.isPlaying -> TTSState.PLAYING
+                    ttsText.isPaused -> TTSState.PAUSED
+                    else -> TTSState.IDLE
+                }
+            }.collect {}
+        }
     }
 
     private fun initializeTTS() {
@@ -77,39 +102,19 @@ class TextToSpeechViewModel(
     fun speak(text: String) {
         if (text.isBlank()) return
         
+        // Allow replaying after completion, but prevent multiple calls while playing
+        if (_ttsState.value == TTSState.PLAYING) {
+            println("TextToSpeechViewModel: Already playing, ignoring duplicate call")
+            return
+        }
+
+        println("TextToSpeechViewModel: speak($text)")
+        
         viewModelScope.launch {
             when (val result = speakTextUseCase(text)) {
                 is Result.Success -> {
-                    _state.update { it.copy(text = text) }
-                    _ttsState.value = TTSState.PLAYING
-                    
-                    // Call platform-specific TTS manager
-                    ttsManager.speak(
-                        text = text,
-                        onWordBoundary = { start, end ->
-                            _state.update { 
-                                it.copy(
-                                    highlightStart = start,
-                                    highlightEnd = end + 1
-                                )
-                            }
-                        },
-                        onStart = {
-                            _ttsState.value = TTSState.PLAYING
-                            _state.update { it.copy(isPlaying = true, isPaused = false) }
-                        },
-                        onComplete = {
-                            _ttsState.value = TTSState.IDLE
-                            _state.update { 
-                                it.copy(
-                                    isPlaying = false, 
-                                    isPaused = false,
-                                    highlightStart = 0,
-                                    highlightEnd = 0
-                                )
-                            }
-                        }
-                    )
+                    // State will be updated through repository observation
+                    println("TextToSpeechViewModel: TTS started successfully")
                 }
                 is Result.Error -> {
                     _ttsState.value = TTSState.IDLE
@@ -121,9 +126,11 @@ class TextToSpeechViewModel(
                             highlightEnd = 0
                         )
                     }
+                    println("TextToSpeechViewModel: TTS error - ${result.exception}")
                 }
                 Result.Loading -> {
-                    // Handle loading state if needed
+                    // Loading state - repository will update when ready
+                    println("TextToSpeechViewModel: TTS loading...")
                 }
             }
         }

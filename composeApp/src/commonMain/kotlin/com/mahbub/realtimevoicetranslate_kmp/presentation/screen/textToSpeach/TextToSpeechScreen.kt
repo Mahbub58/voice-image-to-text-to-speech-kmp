@@ -65,8 +65,11 @@ fun TextToSpeechScreen(onBack: () -> Unit) {
                 maxLines = 6
             )
             Spacer(modifier = Modifier.size(16.dp))
-            IconButton(onClick = { viewModel.speak(textState.value) }) {
-                Icon(imageVector = Icons.Filled.VolumeUp, contentDescription = null)
+            IconButton(
+                onClick = { viewModel.speak(textState.value) },
+                enabled = textState.value.isNotBlank() && !ttsState.value.isPlaying
+            ) {
+                Icon(imageVector = Icons.Filled.VolumeUp, contentDescription = "Speak text")
             }
 
             Spacer(modifier = Modifier.size(12.dp))
@@ -92,7 +95,10 @@ fun TextToSpeechScreen(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.size(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { viewModel.speak(textState.value) }) { Text("Play") }
+                Button(
+                    onClick = { viewModel.speak(textState.value) },
+                    enabled = textState.value.isNotBlank() && !ttsState.value.isPlaying
+                ) { Text("Play") }
                 Button(onClick = { viewModel.pause() }, enabled = ttsState.value.isPlaying) { Text("Pause") }
                 Button(onClick = { viewModel.resume() }, enabled = ttsState.value.isPaused) { Text("Resume") }
                 Button(onClick = { viewModel.stop() }, enabled = ttsState.value.isPlaying || ttsState.value.isPaused) { Text("Stop") }
