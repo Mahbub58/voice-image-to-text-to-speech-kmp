@@ -4,36 +4,32 @@ import com.mahbub.realtimevoicetranslate_kmp.data.ListeningStatus
 import com.mahbub.realtimevoicetranslate_kmp.data.PermissionRequestStatus
 import com.mahbub.realtimevoicetranslate_kmp.data.RecognizerError
 import com.mahbub.realtimevoicetranslate_kmp.data.TranscriptState
+import com.mahbub.realtimevoicetranslate_kmp.data.Error
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import platform.AVFAudio.AVAudioEngine
-import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.AVAudioSessionCategoryPlayAndRecord
-import platform.AVFAudio.AVAudioSessionModeMeasurement
-import platform.AVFAudio.AVAudioSessionRecordPermissionDenied
-import platform.AVFAudio.setActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import platform.AVFAudio.*
 import platform.Foundation.NSLocale
 import platform.Foundation.NSURL
 import platform.Foundation.localeIdentifier
-import platform.Speech.SFSpeechAudioBufferRecognitionRequest
-import platform.Speech.SFSpeechRecognitionTask
-import platform.Speech.SFSpeechRecognizer
-import platform.Speech.SFSpeechRecognizerAuthorizationStatus
+import platform.Speech.*
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.UIKit.UIPasteboard
 import kotlin.coroutines.resume
-import com.mahbub.realtimevoicetranslate_kmp.data.Error
-import platform.AVFAudio.AVAudioSessionCategoryOptions
-import platform.AVFAudio.AVAudioSessionSetActiveOptions
 
 actual class SpeechToText {
-    private var _transcriptState = MutableStateFlow(
+
+    // State management
+    private val _transcriptState = MutableStateFlow(
         TranscriptState(
             listeningStatus = ListeningStatus.INACTIVE,
             error = Error(isError = false),
@@ -44,176 +40,324 @@ actual class SpeechToText {
     actual val transcriptState: MutableStateFlow<TranscriptState>
         get() = _transcriptState
 
+    // Audio components with proper lifecycle management
     private var audioEngine: AVAudioEngine? = null
-    private var request: SFSpeechAudioBufferRecognitionRequest? = null
-    private var task: SFSpeechRecognitionTask? = null
-    private var recognizer = SFSpeechRecognizer()
-    private val customScope = CoroutineScope(Dispatchers.Default)
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest? = null
+    private var recognitionTask: SFSpeechRecognitionTask? = null
+    private var speechRecognizer: SFSpeechRecognizer? = null
+
+    // State flags
+    private var isTapInstalled = false
+    private var isCurrentlyTranscribing = false
+    private var hasRetriedNoSpeech = false
+
+    // Thread-safe operations
+    private val transcriptionMutex = Mutex()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
+        initializeRecognizer()
+        loadSupportedLanguages()
+    }
+
+    private fun initializeRecognizer() {
+        speechRecognizer = SFSpeechRecognizer()
+    }
+
+    private fun loadSupportedLanguages() {
         getSupportedLanguages { supportedLanguages ->
-            transcriptState.update {
-                it.copy(
-                    supportedLanguages = supportedLanguages,
-                )
-            }
+            _transcriptState.update { it.copy(supportedLanguages = supportedLanguages) }
         }
     }
 
     actual fun startTranscribing() {
-        if (recognizer.isAvailable()) {
-            try {
-                val (engine, req) = prepareEngine()
-                audioEngine = engine
-                request = req
-                task = recognizer.recognitionTaskWithRequest(req) { result, error ->
-                    if (result != null) {
-                        updateTranscript(
-                            isError = false,
-                            message = result.bestTranscription.formattedString
-                        )
-                    } else if (error != null) {
-                        //updateTranscript(isError = true, message = error.localizedDescription)
-                        resetTranscription()
-                    }
+        scope.launch {
+            transcriptionMutex.withLock {
+                if (isCurrentlyTranscribing) {
+                    println("SpeechToText.iOS: Already transcribing, ignoring start request")
+                    return@launch
                 }
-            } catch (e: Exception) {
-                updateTranscript(isError = true, message = e.message)
-                resetTranscription()
-            }
 
-            transcriptState.update {
-                it.copy(listeningStatus = ListeningStatus.LISTENING)
-            }
+                val recognizer = speechRecognizer
+                if (recognizer == null || !recognizer.isAvailable()) {
+                    handleRecognizerUnavailable()
+                    return@launch
+                }
 
+                try {
+                    startTranscriptionSession(recognizer)
+                } catch (e: Exception) {
+                    handleTranscriptionError(e.message ?: "Unknown error starting transcription")
+                }
+            }
+        }
+    }
+
+    private fun startTranscriptionSession(recognizer: SFSpeechRecognizer) {
+        println("SpeechToText.iOS: Starting transcription session")
+
+        isCurrentlyTranscribing = true
+        updateListeningStatus(ListeningStatus.LISTENING)
+
+        val (engine, request) = prepareAudioEngine()
+        audioEngine = engine
+        recognitionRequest = request
+
+        recognitionTask = recognizer.recognitionTaskWithRequest(request) { result, error ->
+            handleRecognitionResult(result, error)
+        }
+    }
+
+    private fun handleRecognitionResult(
+        result: platform.Speech.SFSpeechRecognitionResult?,
+        error: platform.Foundation.NSError?
+    ) {
+        when {
+            result != null -> {
+                val transcript = result.bestTranscription.formattedString
+                updateTranscriptSuccess(transcript)
+                hasRetriedNoSpeech = false
+            }
+            error != null -> {
+                handleRecognitionError(error)
+            }
+        }
+    }
+
+    private fun handleRecognitionError(error: platform.Foundation.NSError) {
+        val errorMessage = error.localizedDescription
+        val isNoSpeechError = errorMessage?.contains("No speech", ignoreCase = true) == true
+
+        if (isNoSpeechError && !hasRetriedNoSpeech) {
+            println("SpeechToText.iOS: No speech detected, retrying...")
+            hasRetriedNoSpeech = true
+            scope.launch {
+                cleanupResources()
+                startTranscribing()
+            }
         } else {
-            transcriptState.update {
-                it.copy(
-                    listeningStatus = ListeningStatus.INACTIVE,
-                    error = Error(
-                        isError = true,
-                        message = RecognizerError.RecognizerIsUnavailable.message
-                    )
-                )
-            }
+            println("SpeechToText.iOS: Recognition error: $errorMessage")
+            handleTranscriptionError(errorMessage)
+            hasRetriedNoSpeech = false
         }
     }
 
     actual fun stopTranscribing() {
-        resetTranscription()
-        transcriptState.update {
-            it.copy(
-                listeningStatus = ListeningStatus.INACTIVE
-            )
+        scope.launch {
+            transcriptionMutex.withLock {
+                println("SpeechToText.iOS: Stopping transcription")
+                cleanupResources()
+                updateListeningStatus(ListeningStatus.INACTIVE)
+                Error(isError = false, message = null)
+            }
         }
     }
 
-    private fun resetTranscription() {
-        task?.cancel()
-        audioEngine?.stop()
+    @OptIn(ExperimentalForeignApi::class)
+    private fun cleanupResources() {
+        println("SpeechToText.iOS: Cleaning up resources")
+
+        // Stop recognition request
+        recognitionRequest?.endAudio()
+
+        // Cancel and cleanup recognition task
+        recognitionTask?.let { task ->
+            runCatching { task.finish() }
+            runCatching { task.cancel() }
+        }
+
+        // Remove audio tap if installed
+        audioEngine?.let { engine ->
+            if (isTapInstalled) {
+                runCatching {
+                    engine.inputNode.removeTapOnBus(0u)
+                    println("SpeechToText.iOS: Audio tap removed")
+                }
+                isTapInstalled = false
+            }
+
+            // Stop audio engine
+            if (engine.running) {
+                engine.stop()
+                println("SpeechToText.iOS: Audio engine stopped")
+            }
+        }
+
+        // Deactivate audio session
+        runCatching {
+            AVAudioSession.sharedInstance().setActive(
+                false,
+                1uL, // AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+                null
+            )
+            println("SpeechToText.iOS: Audio session deactivated")
+        }
+
+        // Clear references
+        recognitionTask = null
         audioEngine = null
-        request = null
-        task = null
+        recognitionRequest = null
+        isCurrentlyTranscribing = false
+
+        println("SpeechToText.iOS: Cleanup completed")
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun prepareAudioEngine(): Pair<AVAudioEngine, SFSpeechAudioBufferRecognitionRequest> {
+        val engine = AVAudioEngine()
+        val request = SFSpeechAudioBufferRecognitionRequest().apply {
+            shouldReportPartialResults = true
+            requiresOnDeviceRecognition = false
+        }
+
+        configureAudioSession()
+        installAudioTap(engine, request)
+        startAudioEngine(engine)
+
+        return Pair(engine, request)
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun configureAudioSession() {
+        val audioSession = AVAudioSession.sharedInstance()
+
+        val categorySuccess = audioSession.setCategory(
+            AVAudioSessionCategoryRecord,
+            AVAudioSessionModeSpokenAudio,
+            0uL, // AVAudioSessionCategoryOptionDefaultToSpeaker
+            null
+        )
+
+        if (!categorySuccess) {
+            println("SpeechToText.iOS: Warning - Failed to set audio session category")
+        }
+
+        audioSession.setPreferredSampleRate(16000.0, null)
+        audioSession.setPreferredIOBufferDuration(0.02, null)
+
+        val activateSuccess = audioSession.setActive(
+            true,
+            1uL, // AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+            null
+        )
+
+        if (!activateSuccess) {
+            println("SpeechToText.iOS: Warning - Failed to activate audio session")
+        }
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun installAudioTap(
+        engine: AVAudioEngine,
+        request: SFSpeechAudioBufferRecognitionRequest
+    ) {
+        val inputNode = engine.inputNode
+        val recordingFormat = inputNode.outputFormatForBus(0u)
+
+        inputNode.installTapOnBus(0u, 2048u, recordingFormat) { buffer, _ ->
+            buffer?.let { request.appendAudioPCMBuffer(it) }
+        }
+
+        isTapInstalled = true
+        println("SpeechToText.iOS: Audio tap installed")
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun startAudioEngine(engine: AVAudioEngine) {
+        engine.prepare()
+        val started = engine.startAndReturnError(null)
+
+        if (started) {
+            println("SpeechToText.iOS: Audio engine started successfully")
+        } else {
+            throw IllegalStateException("Failed to start audio engine")
+        }
     }
 
     actual fun requestPermission(onPermissionResult: (PermissionRequestStatus) -> Unit) {
-        customScope.launch {
-            val hasRecordPermission = hasPermissionToRecord()
-            val hasSpeechPermission = hasAuthorizationToRecognize()
+        scope.launch {
+            try {
+                val recordPermission = checkRecordPermission()
+                val speechPermission = checkSpeechPermission()
 
-            when {
-                hasRecordPermission && hasSpeechPermission -> {
-                    onPermissionResult(PermissionRequestStatus.ALLOWED)
-                }
-                !hasRecordPermission || !hasSpeechPermission -> {
-                    val recordAuthStatus = AVAudioSession.sharedInstance().recordPermission
-                    val speechAuthStatus = SFSpeechRecognizer.authorizationStatus()
-
-                    if (recordAuthStatus == AVAudioSessionRecordPermissionDenied ||
-                        speechAuthStatus == SFSpeechRecognizerAuthorizationStatus.SFSpeechRecognizerAuthorizationStatusDenied) {
-                        onPermissionResult(PermissionRequestStatus.NEVER_ASK_AGAIN)
-                    } else {
-                        onPermissionResult(PermissionRequestStatus.NOT_ALLOWED)
-                    }
-                }
+                val status = determinePermissionStatus(recordPermission, speechPermission)
+                onPermissionResult(status)
+            } catch (e: Exception) {
+                println("SpeechToText.iOS: Error checking permissions: ${e.message}")
+                onPermissionResult(PermissionRequestStatus.NOT_ALLOWED)
             }
         }
     }
 
-    private suspend fun hasAuthorizationToRecognize(): Boolean =
-        suspendCancellableCoroutine { continuation ->
-            SFSpeechRecognizer.requestAuthorization { status ->
-                continuation.resume(status == SFSpeechRecognizerAuthorizationStatus.SFSpeechRecognizerAuthorizationStatusAuthorized)
-            }
-        }
-
-    private suspend fun hasPermissionToRecord(): Boolean =
+    private suspend fun checkRecordPermission(): Boolean =
         suspendCancellableCoroutine { continuation ->
             AVAudioSession.sharedInstance().requestRecordPermission { granted ->
-                continuation.resume(granted)
+                if (continuation.isActive) {
+                    continuation.resume(granted)
+                }
             }
         }
 
-    @OptIn(ExperimentalForeignApi::class)
-    private fun prepareEngine(): Pair<AVAudioEngine, SFSpeechAudioBufferRecognitionRequest> {
-        val audioEngine = AVAudioEngine()
-        val request = SFSpeechAudioBufferRecognitionRequest()
-            .apply {
-                shouldReportPartialResults = true
+    private suspend fun checkSpeechPermission(): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            SFSpeechRecognizer.requestAuthorization { status ->
+                if (continuation.isActive) {
+                    val isAuthorized = status ==
+                            SFSpeechRecognizerAuthorizationStatus.SFSpeechRecognizerAuthorizationStatusAuthorized
+                    continuation.resume(isAuthorized)
+                }
             }
-
-        val audioSession = AVAudioSession.sharedInstance()
-        audioSession.setCategory(
-            AVAudioSessionCategoryPlayAndRecord,
-            AVAudioSessionModeMeasurement,
-            AVAudioSessionCategoryOptions.MIN_VALUE,
-            null
-        )
-        audioSession.setActive(
-            true,
-            AVAudioSessionSetActiveOptions.MIN_VALUE,
-            null
-        )
-
-        val inputNode = audioEngine.inputNode
-        val recordingFormat = inputNode.outputFormatForBus(0u)
-        inputNode.installTapOnBus(0u, 1024u, recordingFormat) { buffer, _ ->
-            request.appendAudioPCMBuffer(buffer!!)
         }
 
-        audioEngine.prepare()
-        audioEngine.startAndReturnError(null)
+    private fun determinePermissionStatus(
+        hasRecordPermission: Boolean,
+        hasSpeechPermission: Boolean
+    ): PermissionRequestStatus {
+        return when {
+            hasRecordPermission && hasSpeechPermission ->
+                PermissionRequestStatus.ALLOWED
 
-        return Pair(audioEngine, request)
+            isPermissionDenied() ->
+                PermissionRequestStatus.NEVER_ASK_AGAIN
+
+            else ->
+                PermissionRequestStatus.NOT_ALLOWED
+        }
     }
 
-    private fun updateTranscript(isError: Boolean, message: String?) {
-        if (!isError) {
-            transcriptState.update {
-                it.copy(
-                    transcript = message,
-                    error = Error(isError = false)
-                )
-            }
-        } else {
-            transcriptState.update {
-                it.copy(
-                    listeningStatus = ListeningStatus.INACTIVE,
-                    error = Error(isError = true, message = message),
-                    transcript = null
-                )
-            }
-        }
+    private fun isPermissionDenied(): Boolean {
+        val recordStatus = AVAudioSession.sharedInstance().recordPermission
+        val speechStatus = SFSpeechRecognizer.authorizationStatus()
+
+        return recordStatus == AVAudioSessionRecordPermissionDenied ||
+                speechStatus == SFSpeechRecognizerAuthorizationStatus.SFSpeechRecognizerAuthorizationStatusDenied
     }
 
     actual fun setLanguage(languageCode: String) {
-        val locale = NSLocale(languageCode)
-        recognizer = SFSpeechRecognizer(locale)
+        scope.launch {
+            transcriptionMutex.withLock {
+                val wasTranscribing = isCurrentlyTranscribing
+
+                if (wasTranscribing) {
+                    cleanupResources()
+                }
+
+                val locale = NSLocale(languageCode)
+                speechRecognizer = SFSpeechRecognizer(locale)
+                println("SpeechToText.iOS: Language set to $languageCode")
+
+                if (wasTranscribing) {
+                    startTranscribing()
+                }
+            }
+        }
     }
 
     actual fun getSupportedLanguages(onLanguagesResult: (List<String>) -> Unit) {
         val supportedLocales = SFSpeechRecognizer.supportedLocales()
-        val languages = supportedLocales.map { (it as NSLocale).localeIdentifier() }
+        val languages = supportedLocales.mapNotNull {
+            (it as? NSLocale)?.localeIdentifier()
+        }
         onLanguagesResult(languages)
     }
 
@@ -222,65 +366,102 @@ actual class SpeechToText {
     }
 
     actual fun showNeedPermission() {
-        transcriptState.update {
-            it.copy(
-                showPermissionNeedDialog = true,
-            )
-        }
+        _transcriptState.update { it.copy(showPermissionNeedDialog = true) }
     }
 
     actual fun dismissPermissionDialog() {
-        transcriptState.update {
-            it.copy(
-                showPermissionNeedDialog = false,
-            )
-        }
+        _transcriptState.update { it.copy(showPermissionNeedDialog = false) }
     }
 
     actual fun openAppSettings() {
-        val recordAuthStatus = AVAudioSession.sharedInstance().recordPermission
-        val speechAuthStatus = SFSpeechRecognizer.authorizationStatus()
+        val recordStatus = AVAudioSession.sharedInstance().recordPermission
+        val speechStatus = SFSpeechRecognizer.authorizationStatus()
 
         when {
-            recordAuthStatus == AVAudioSessionRecordPermissionDenied -> {
-                val micSettingsUrl = NSURL.URLWithString("prefs:root=Privacy&path=MICROPHONE")
-                if (micSettingsUrl != null && UIApplication.sharedApplication.canOpenURL(micSettingsUrl)) {
-                    UIApplication.sharedApplication.openURL(
-                        micSettingsUrl,
-                        mapOf<Any?, Any>(),
-                        null
-                    )
-                } else {
-                    openGeneralSettings()
-                }
-            }
-            speechAuthStatus == SFSpeechRecognizerAuthorizationStatus.SFSpeechRecognizerAuthorizationStatusDenied -> {
-                val speechSettingsUrl = NSURL.URLWithString("prefs:root=Privacy&path=SPEECH_RECOGNITION")
-                if (speechSettingsUrl != null && UIApplication.sharedApplication.canOpenURL(speechSettingsUrl)) {
-                    UIApplication.sharedApplication.openURL(
-                        speechSettingsUrl,
-                        mapOf<Any?, Any>(),
-                        null
-                    )
-                } else {
-                    openGeneralSettings()
-                }
-            }
-            else -> {
+            recordStatus == AVAudioSessionRecordPermissionDenied ->
+                openMicrophoneSettings()
+
+            speechStatus == SFSpeechRecognizerAuthorizationStatus.SFSpeechRecognizerAuthorizationStatusDenied ->
+                openSpeechRecognitionSettings()
+
+            else ->
                 openGeneralSettings()
-            }
         }
+
         dismissPermissionDialog()
     }
 
+    private fun openMicrophoneSettings() {
+        val url = NSURL.URLWithString("prefs:root=Privacy&path=MICROPHONE")
+        openURLOrFallback(url)
+    }
+
+    private fun openSpeechRecognitionSettings() {
+        val url = NSURL.URLWithString("prefs:root=Privacy&path=SPEECH_RECOGNITION")
+        openURLOrFallback(url)
+    }
+
+    private fun openURLOrFallback(url: NSURL?) {
+        val app = UIApplication.sharedApplication
+
+        if (url != null && app.canOpenURL(url)) {
+            app.openURL(url, mapOf<Any?, Any>(), null)
+        } else {
+            openGeneralSettings()
+        }
+    }
+
     private fun openGeneralSettings() {
-        val generalSettingsUrl = NSURL.URLWithString(UIApplicationOpenSettingsURLString)
-        if (generalSettingsUrl != null) {
-            UIApplication.sharedApplication.openURL(
-                generalSettingsUrl,
-                mapOf<Any?, Any>(),
-                null
+        val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString)
+        url?.let { UIApplication.sharedApplication.openURL(it, mapOf<Any?, Any>(), null) }
+    }
+
+    // Helper methods for state updates
+    private fun updateListeningStatus(status: ListeningStatus) {
+        _transcriptState.update { it.copy(listeningStatus = status) }
+    }
+
+    private fun updateTranscriptSuccess(transcript: String) {
+        _transcriptState.update {
+            it.copy(
+                transcript = transcript,
+                error = Error(isError = false)
             )
+        }
+    }
+
+    private fun handleTranscriptionError(message: String) {
+        println("SpeechToText.iOS: Transcription error: $message")
+        cleanupResources()
+
+        _transcriptState.update {
+            it.copy(
+                listeningStatus = ListeningStatus.INACTIVE,
+                error = Error(isError = false, message = message),
+                transcript = null
+            )
+        }
+    }
+
+    private fun handleRecognizerUnavailable() {
+        _transcriptState.update {
+            it.copy(
+                listeningStatus = ListeningStatus.INACTIVE,
+                error = Error(
+                    isError = true,
+                    message = RecognizerError.RecognizerIsUnavailable.message
+                )
+            )
+        }
+    }
+
+    // Cleanup on deinitialization
+    fun cleanup() {
+        scope.launch {
+            transcriptionMutex.withLock {
+                cleanupResources()
+            }
+            scope.cancel()
         }
     }
 }
