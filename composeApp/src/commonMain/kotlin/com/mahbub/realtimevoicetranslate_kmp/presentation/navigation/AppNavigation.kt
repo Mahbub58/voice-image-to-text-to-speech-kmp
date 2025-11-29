@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.LandingScreen
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.SpeechToTextScreen
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textToSpeach.TextToSpeechScreen
+import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textrecognition.TextRecognitionScreen
 
 @Composable
 fun AppNavigation() {
@@ -35,10 +36,12 @@ fun AppNavigation() {
             when (current) {
                 ScreenRoute.Landing -> LandingScreen(
                     onClickSpeechToText = { navigate(ScreenRoute.SpeechToText) },
-                    onClickTextToSpeech = { navigate(ScreenRoute.TextToSpeech) }
+                    onClickTextToSpeech = { navigate(ScreenRoute.TextToSpeech) },
+                    onClickTextRecognition = { navigate(ScreenRoute.TextRecognition) }
                 )
                 ScreenRoute.SpeechToText -> SpeechToTextScreen(onBack = { popBack() })
                 ScreenRoute.TextToSpeech -> TextToSpeechScreen(onBack = { popBack() })
+                ScreenRoute.TextRecognition -> TextRecognitionScreen(onBack = { popBack() })
             }
         }
     }

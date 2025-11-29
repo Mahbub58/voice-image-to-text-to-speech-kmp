@@ -5,8 +5,10 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 import com.mahbub.realtimevoicetranslate_kmp.data.repository.SpeechToTextRepositoryImpl
 import com.mahbub.realtimevoicetranslate_kmp.data.repository.TextToSpeechRepositoryImpl
+import com.mahbub.realtimevoicetranslate_kmp.data.repository.TextRecognitionRepositoryImpl
 import com.mahbub.realtimevoicetranslate_kmp.domain.repository.SpeechToTextRepository
 import com.mahbub.realtimevoicetranslate_kmp.domain.repository.TextToSpeechRepository
+import com.mahbub.realtimevoicetranslate_kmp.domain.repository.TextRecognitionRepository
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.CopyTranscriptUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.InitializeTTSUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.PauseTTSUseCase
@@ -16,8 +18,11 @@ import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.SpeakTextUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StartSpeechRecognitionUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StopSpeechRecognitionUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StopTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StartTextRecognitionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.RequestTextRecognitionPermissionUseCase
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.SpeechToTextViewModel
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textToSpeach.TextToSpeechViewModel
+import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textrecognition.TextRecognitionViewModel
 
 expect val platformModule: Module
 
@@ -25,6 +30,7 @@ val sharedModule = module {
     // Repository bindings
     single<SpeechToTextRepository> { SpeechToTextRepositoryImpl(get()) }
     single<TextToSpeechRepository> { TextToSpeechRepositoryImpl() }
+    single<TextRecognitionRepository> { TextRecognitionRepositoryImpl() }
     
     // Use case bindings
     single { StartSpeechRecognitionUseCase(get()) }
@@ -36,8 +42,11 @@ val sharedModule = module {
     single { PauseTTSUseCase(get()) }
     single { ResumeTTSUseCase(get()) }
     single { StopTTSUseCase(get()) }
+    single { StartTextRecognitionUseCase(get()) }
+    single { RequestTextRecognitionPermissionUseCase(get()) }
     
     // ViewModel bindings
     viewModel { SpeechToTextViewModel(get(), get(), get(), get(), get()) }
     viewModel { TextToSpeechViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { TextRecognitionViewModel(get(), get(), get()) }
 }
