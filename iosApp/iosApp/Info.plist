@@ -65,6 +65,12 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs access to your microphone to record audio for speech recognition</string>
 
+    <!-- REQUIRED: Privacy Permissions for Photo Library Access -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This app needs access to your photo library to recognize text from images</string>
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs access to your camera to capture images for text recognition</string>
+
 
 </dict>
 </plist>

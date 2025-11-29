@@ -5,7 +5,8 @@ import ComposeApp
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         MainViewControllerKt.MainViewController(
-            ttsProvider: TTSManagerIOS.shared
+            ttsProvider: TTSManagerIOS.shared,
+            textRecognitionProvider: TextRecognitionManagerIOS.shared
         )
     }
 
@@ -18,6 +19,5 @@ struct ContentView: View {
             .ignoresSafeArea()
     }
 }
-
 
 

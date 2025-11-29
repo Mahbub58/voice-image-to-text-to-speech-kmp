@@ -22,7 +22,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun LandingScreen(
     onClickSpeechToText: () -> Unit,
-    onClickTextToSpeech: () -> Unit
+    onClickTextToSpeech: () -> Unit,
+    onClickTextRecognition: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -44,6 +45,10 @@ fun LandingScreen(
             Spacer(modifier = Modifier.size(8.dp))
             Text(text = "Text to Speech")
         }
+        Spacer(modifier = Modifier.size(16.dp))
+        Button(onClick = onClickTextRecognition) {
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(text = "Text Recognition")
+        }
     }
 }
-
