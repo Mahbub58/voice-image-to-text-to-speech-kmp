@@ -6,7 +6,9 @@ import com.mahbub.realtimevoicetranslate_kmp.domain.model.Result
 import com.mahbub.realtimevoicetranslate_kmp.domain.model.TextRecognitionState
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.RequestTextRecognitionPermissionUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StartTextRecognitionUseCase
-import com.mahbub.realtimevoicetranslate_kmp.domain.repository.TextRecognitionRepository
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ObserveTextRecognitionStateUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.DismissTextRecognitionPermissionDialogUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.OpenTextRecognitionSettingsUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.onEach
@@ -16,7 +18,9 @@ import kotlinx.coroutines.launch
 class TextRecognitionViewModel(
     private val requestPermissionUseCase: RequestTextRecognitionPermissionUseCase,
     private val startTextRecognitionUseCase: StartTextRecognitionUseCase,
-    private val repository: TextRecognitionRepository
+    private val observeStateUseCase: ObserveTextRecognitionStateUseCase,
+    private val dismissPermissionDialogUseCase: DismissTextRecognitionPermissionDialogUseCase,
+    private val openSettingsUseCase: OpenTextRecognitionSettingsUseCase
 ) : ViewModel() {
     private val _state = MutableStateFlow(TextRecognitionState())
     val state: StateFlow<TextRecognitionState> = _state
@@ -27,7 +31,7 @@ class TextRecognitionViewModel(
 
     private fun observeState() {
         viewModelScope.launch {
-            repository.getState().onEach { s ->
+            observeStateUseCase().onEach { s ->
                 _state.update { s }
             }.collect {}
         }
@@ -58,10 +62,10 @@ class TextRecognitionViewModel(
     }
 
     fun dismissPermissionDialog() {
-        repository.dismissPermissionDialog()
+        dismissPermissionDialogUseCase()
     }
 
     fun openAppSettings() {
-        repository.openAppSettings()
+        openSettingsUseCase()
     }
 }

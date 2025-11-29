@@ -20,6 +20,11 @@ import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StopSpeechRecognitio
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StopTTSUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StartTextRecognitionUseCase
 import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.RequestTextRecognitionPermissionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ObserveTTSStateUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ReleaseTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ObserveTextRecognitionStateUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.DismissTextRecognitionPermissionDialogUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.OpenTextRecognitionSettingsUseCase
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.SpeechToTextViewModel
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textToSpeach.TextToSpeechViewModel
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textrecognition.TextRecognitionViewModel
@@ -42,11 +47,16 @@ val sharedModule = module {
     single { PauseTTSUseCase(get()) }
     single { ResumeTTSUseCase(get()) }
     single { StopTTSUseCase(get()) }
+    single { ObserveTTSStateUseCase(get()) }
+    single { ReleaseTTSUseCase(get()) }
     single { StartTextRecognitionUseCase(get()) }
     single { RequestTextRecognitionPermissionUseCase(get()) }
+    single { ObserveTextRecognitionStateUseCase(get()) }
+    single { DismissTextRecognitionPermissionDialogUseCase(get()) }
+    single { OpenTextRecognitionSettingsUseCase(get()) }
     
     // ViewModel bindings
     viewModel { SpeechToTextViewModel(get(), get(), get(), get(), get()) }
-    viewModel { TextToSpeechViewModel(get(), get(), get(), get(), get(), get()) }
-    viewModel { TextRecognitionViewModel(get(), get(), get()) }
+    viewModel { TextToSpeechViewModel(get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { TextRecognitionViewModel(get(), get(), get(), get(), get()) }
 }
