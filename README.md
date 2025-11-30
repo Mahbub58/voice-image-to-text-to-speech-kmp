@@ -60,8 +60,8 @@ The project is modular and follows a clean architecture with `domain` use cases,
 
 ### Clone
 ```
-git clone https://github.com/your-org/RealTimeVoiceTranslate_KMP.git
-cd RealTimeVoiceTranslate_KMP
+git clone https://github.com/Mahbub58/voice-image-to-text-to-speech-kmp.git
+cd voice-image-to-text-to-speech-kmp
 ```
 
 ### Android Run
