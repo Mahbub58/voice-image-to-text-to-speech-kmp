@@ -1,12 +1,62 @@
 package com.mahbub.realtimevoicetranslate_kmp.core.platform.di
 
-import org.koin.compose.viewmodel.dsl.viewModel
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
+import com.mahbub.realtimevoicetranslate_kmp.data.repository.SpeechToTextRepositoryImpl
+import com.mahbub.realtimevoicetranslate_kmp.data.repository.TextToSpeechRepositoryImpl
+import com.mahbub.realtimevoicetranslate_kmp.data.repository.TextRecognitionRepositoryImpl
+import com.mahbub.realtimevoicetranslate_kmp.domain.repository.SpeechToTextRepository
+import com.mahbub.realtimevoicetranslate_kmp.domain.repository.TextToSpeechRepository
+import com.mahbub.realtimevoicetranslate_kmp.domain.repository.TextRecognitionRepository
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.CopyTranscriptUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.InitializeTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.PauseTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.RequestPermissionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ResumeTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.SpeakTextUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StartSpeechRecognitionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StopSpeechRecognitionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StopTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.StartTextRecognitionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.RequestTextRecognitionPermissionUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ObserveTTSStateUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ReleaseTTSUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.ObserveTextRecognitionStateUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.DismissTextRecognitionPermissionDialogUseCase
+import com.mahbub.realtimevoicetranslate_kmp.domain.usecase.OpenTextRecognitionSettingsUseCase
 import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.SpeechToTextViewModel
+import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textToSpeach.TextToSpeechViewModel
+import com.mahbub.realtimevoicetranslate_kmp.presentation.screen.textrecognition.TextRecognitionViewModel
 
 expect val platformModule: Module
 
 val sharedModule = module {
-    viewModel { SpeechToTextViewModel(get()) }
+    // Repository bindings
+    single<SpeechToTextRepository> { SpeechToTextRepositoryImpl(get()) }
+    single<TextToSpeechRepository> { TextToSpeechRepositoryImpl() }
+    single<TextRecognitionRepository> { TextRecognitionRepositoryImpl() }
+    
+    // Use case bindings
+    single { StartSpeechRecognitionUseCase(get()) }
+    single { StopSpeechRecognitionUseCase(get()) }
+    single { RequestPermissionUseCase(get()) }
+    single { CopyTranscriptUseCase(get()) }
+    single { InitializeTTSUseCase(get()) }
+    single { SpeakTextUseCase(get()) }
+    single { PauseTTSUseCase(get()) }
+    single { ResumeTTSUseCase(get()) }
+    single { StopTTSUseCase(get()) }
+    single { ObserveTTSStateUseCase(get()) }
+    single { ReleaseTTSUseCase(get()) }
+    single { StartTextRecognitionUseCase(get()) }
+    single { RequestTextRecognitionPermissionUseCase(get()) }
+    single { ObserveTextRecognitionStateUseCase(get()) }
+    single { DismissTextRecognitionPermissionDialogUseCase(get()) }
+    single { OpenTextRecognitionSettingsUseCase(get()) }
+    
+    // ViewModel bindings
+    viewModel { SpeechToTextViewModel(get(), get(), get(), get(), get()) }
+    viewModel { TextToSpeechViewModel(get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { TextRecognitionViewModel(get(), get(), get(), get(), get()) }
 }

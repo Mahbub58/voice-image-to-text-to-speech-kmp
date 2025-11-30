@@ -1,0 +1,5 @@
+// Simple test to validate Gradle setup
+println("Gradle version: " + gradle.gradleVersion)
+println("Java version: " + System.getProperty("java.version"))
+println("Kotlin version: " + org.jetbrains.kotlin.config.KotlinCompilerVersion.VERSION)
+println("Build script executed successfully")

@@ -4,7 +4,10 @@ import ComposeApp
 
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        MainViewControllerKt.MainViewController()
+        MainViewControllerKt.MainViewController(
+            ttsProvider: TTSManagerIOS.shared,
+            textRecognitionProvider: TextRecognitionManagerIOS.shared
+        )
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
@@ -16,6 +19,5 @@ struct ContentView: View {
             .ignoresSafeArea()
     }
 }
-
 
 

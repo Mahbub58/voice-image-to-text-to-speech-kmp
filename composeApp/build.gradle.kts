@@ -29,6 +29,29 @@ kotlin {
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.koin.android)
+
+            // To recognize Latin script
+            implementation("com.google.mlkit:text-recognition:16.0.1")
+// To recognize Chinese script
+            implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+// To recognize Devanagari script
+            implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+// To recognize Japanese script
+            implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+// To recognize Korean script
+            implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+
+            // To recognize Latin script
+            implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+// To recognize Chinese script
+            implementation("com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.1")
+// To recognize Devanagari script
+            implementation("com.google.android.gms:play-services-mlkit-text-recognition-devanagari:16.0.1")
+// To recognize Japanese script
+            implementation("com.google.android.gms:play-services-mlkit-text-recognition-japanese:16.0.1")
+// To recognize Korean script
+            implementation("com.google.android.gms:play-services-mlkit-text-recognition-korean:16.0.1")
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -84,4 +107,3 @@ android {
 dependencies {
     debugImplementation(compose.uiTooling)
 }
-
