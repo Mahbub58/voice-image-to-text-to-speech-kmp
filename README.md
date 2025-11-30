@@ -1,4 +1,4 @@
-# RealTimeVoiceTranslate KMP
+# voice-image-to-text-to-speach-kmp
 
 A cross‑platform (Android + iOS) app built with Compose Multiplatform that delivers:
 
